@@ -6,7 +6,8 @@
     "dev": "vp dev",
     "build": "vp build",
     "preview": "vp preview",
-    "deploy": "vp run build && vp exec wrangler deploy --env prod",
+    "deploy:prod": "VITE_MOSOO_DEPLOYMENT_MODE=cloud VITE_MOSOO_ENVIRONMENT=production vp run build && vp exec wrangler deploy --env prod",
+    "deploy:sit": "VITE_MOSOO_DEPLOYMENT_MODE=cloud VITE_MOSOO_ENVIRONMENT=sit vp run build && vp exec wrangler deploy --env sit",
     "lint": "vp lint .",
     "tc": "vp exec tsc --noEmit",
     "test": "vp exec bun test tests"

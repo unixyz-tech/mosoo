@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "vp exec bun bin/dev-local.ts",
-    "deploy": "vp exec bun bin/deploy-prod.ts",
+    "deploy:prod": "vp exec bun bin/deploy-prod.ts",
+    "deploy:sit": "vp exec bun bin/deploy-sit.ts",
     "env:init": "vp exec bun bin/init-dev-vars.ts",
     "cf:types": "mkdir -p .tmp/.config .tmp/types && XDG_CONFIG_HOME=$PWD/.tmp/.config vp exec wrangler types .tmp/types/worker-configuration.d.ts",
     "db:migrate:local": "vp exec wrangler d1 migrations apply DB --local",

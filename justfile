@@ -133,16 +133,28 @@ driver-update:
     git submodule update --init --remote --checkout apps/driver
 
 # Deploy API and Web production targets.
-deploy: check
-    bun run deploy
+deploy-prod: check
+    bun run deploy:prod
+
+# Deploy API and Web SIT targets.
+deploy-sit: check
+    bun run deploy:sit
 
 # Deploy the API production target.
-deploy-api:
-    bun run deploy:api
+deploy-api-prod:
+    bun run deploy:api:prod
+
+# Deploy the API SIT target.
+deploy-api-sit:
+    bun run deploy:api:sit
 
 # Deploy the Web production target.
-deploy-web:
-    bun run deploy:web
+deploy-web-prod:
+    bun run deploy:web:prod
+
+# Deploy the Web SIT target.
+deploy-web-sit:
+    bun run deploy:web:sit
 
 # Remove generated local build and dependency directories.
 clean:

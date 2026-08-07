@@ -18,13 +18,21 @@ name = "mosoo-web-prod"
 workers_dev = false
 
 [[env.prod.routes]]
-pattern = "cloud.mosoo.ai"
-custom_domain = true
-
-[[env.prod.routes]]
-pattern = "try.mosoo.ai"
+pattern = "mosoo-web.unixyz.tech"
 custom_domain = true
 
 [[env.prod.services]]
 binding = "API"
 service = "mosoo-api-prod"
+
+[env.sit]
+name = "mosoo-web-sit"
+workers_dev = false
+
+[[env.sit.routes]]
+pattern = "mosoo-web-sit.unixyz.tech"
+custom_domain = true
+
+[[env.sit.services]]
+binding = "API"
+service = "mosoo-api-sit"

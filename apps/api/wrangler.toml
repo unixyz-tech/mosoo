@@ -145,13 +145,14 @@ head_sampling_rate = 0.1
 
 [env.prod.vars]
 APP_NAME = "mosoo"
-WEB_ORIGIN = "https://cloud.mosoo.ai"
+WEB_ORIGIN = "https://mosoo-web.unixyz.tech"
+MOSOO_API_BASE_URL = "https://mosoo-api.unixyz.tech"
 AUTH_EMAIL_FROM = "mosoo AUTH <auth@mosoo.ai>"
 FILE_BUCKET_NAME = "mosoo-file"
 BACKUP_BUCKET_NAME = "mosoo-sandbox-state"
 SANDBOX_STATE_BUCKET_NAME = "mosoo-sandbox-state"
 SANDBOX_FILE_BUCKET_LOCAL = "false"
-MOSOO_APP_DEPLOYMENT_DOMAIN = "apps.mosoo.ai"
+MOSOO_APP_DEPLOYMENT_DOMAIN = "apps.unixyz.tech"
 MOSOO_DEPLOYMENT_MODE = "cloud"
 MOSOO_ENVIRONMENT = "production"
 POSTHOG_API_HOST = "https://us.i.posthog.com"
@@ -169,17 +170,11 @@ required = [
   "CLOUDFLARE_ACCOUNT_ID",
   "CLOUDFLARE_API_TOKEN",
   "CLOUDFLARE_ZONE_ID",
-  "GOOGLE_OAUTH_CLIENT_ID",
-  "GOOGLE_OAUTH_CLIENT_SECRET",
 ]
 
 [[env.prod.routes]]
-zone_name = "mosoo.ai"
-pattern = "cloud.mosoo.ai/api/*"
-
-[[env.prod.routes]]
-zone_name = "mosoo.ai"
-pattern = "try.mosoo.ai/api/*"
+zone_name = "unixyz.tech"
+pattern = "mosoo-api.unixyz.tech/api/*"
 
 [[env.prod.durable_objects.bindings]]
 name = "DriverConnection"
@@ -219,7 +214,7 @@ bucket_name = "mosoo-sandbox-state"
 [[env.prod.d1_databases]]
 binding = "DB"
 database_name = "mosoo-prod"
-database_id = "c851724c-2aa2-4c10-ac92-df74ae6e5dd0"
+database_id = "6c775eb5-a830-4dba-b26d-b4862776cde7"
 migrations_dir = "../../pkgs/db/drizzle"
 
 [[env.prod.queues.producers]]
@@ -270,5 +265,138 @@ tag = "v1"
 new_sqlite_classes = ["DriverConnection", "Sandbox", "Session", "ChannelConnection"]
 
 [[env.prod.migrations]]
+tag = "v1"
+new_sqlite_classes = ["DriverConnection", "Sandbox", "Session", "ChannelConnection"]
+
+[env.sit]
+name = "mosoo-api-sit"
+workers_dev = false
+
+[env.sit.observability]
+enabled = true
+
+[env.sit.observability.logs]
+enabled = true
+head_sampling_rate = 1
+
+[env.sit.observability.traces]
+enabled = true
+head_sampling_rate = 1
+
+[env.sit.vars]
+APP_NAME = "mosoo"
+WEB_ORIGIN = "https://mosoo-web-sit.unixyz.tech"
+MOSOO_API_BASE_URL = "https://mosoo-api-sit.unixyz.tech"
+AUTH_EMAIL_FROM = "mosoo SIT <auth@mosoo.ai>"
+FILE_BUCKET_NAME = "mosoo-file-sit"
+BACKUP_BUCKET_NAME = "mosoo-sandbox-state-sit"
+SANDBOX_STATE_BUCKET_NAME = "mosoo-sandbox-state-sit"
+SANDBOX_FILE_BUCKET_LOCAL = "false"
+MOSOO_APP_DEPLOYMENT_DOMAIN = "apps-sit.unixyz.tech"
+MOSOO_DEPLOYMENT_MODE = "cloud"
+MOSOO_ENVIRONMENT = "sit"
+POSTHOG_API_HOST = "https://us.i.posthog.com"
+
+[[env.sit.send_email]]
+name = "AUTH_EMAIL"
+
+[env.sit.secrets]
+required = [
+  "BETTER_AUTH_SECRET",
+  "RUNTIME_ACTION_TOKEN_SECRET",
+  "VAULT_ROOT_SECRET",
+  "R2_ACCESS_KEY_ID",
+  "R2_SECRET_ACCESS_KEY",
+  "CLOUDFLARE_ACCOUNT_ID",
+  "CLOUDFLARE_API_TOKEN",
+  "CLOUDFLARE_ZONE_ID",
+]
+
+[[env.sit.routes]]
+zone_name = "unixyz.tech"
+pattern = "mosoo-api-sit.unixyz.tech/api/*"
+
+[[env.sit.durable_objects.bindings]]
+name = "DriverConnection"
+class_name = "DriverConnection"
+
+[[env.sit.durable_objects.bindings]]
+name = "Session"
+class_name = "Session"
+
+[[env.sit.durable_objects.bindings]]
+name = "ChannelConnection"
+class_name = "ChannelConnection"
+
+[[env.sit.durable_objects.bindings]]
+name = "Sandbox"
+class_name = "Sandbox"
+
+[[env.sit.containers]]
+class_name = "Sandbox"
+image = "../driver/Containerfile"
+instance_type = "standard-2"
+max_instances = 2
+
+[[env.sit.r2_buckets]]
+binding = "FILE_BUCKET"
+bucket_name = "mosoo-file-sit"
+
+[[env.sit.r2_buckets]]
+binding = "BACKUP_BUCKET"
+bucket_name = "mosoo-sandbox-state-sit"
+
+[[env.sit.r2_buckets]]
+binding = "SANDBOX_STATE_BUCKET"
+bucket_name = "mosoo-sandbox-state-sit"
+
+[[env.sit.d1_databases]]
+binding = "DB"
+database_name = "mosoo-sit"
+# Replace with the Cloudflare D1 database ID before deploying SIT remotely.
+database_id = "d9236b06-e963-453a-8ba7-d11b459eab5d"
+migrations_dir = "../../pkgs/db/drizzle"
+
+[[env.sit.queues.producers]]
+binding = "API_COMMAND_QUEUE"
+queue = "mosoo-sit-api-command"
+
+[[env.sit.queues.producers]]
+binding = "ENVIRONMENT_ARTIFACT_BUILD_QUEUE"
+queue = "mosoo-sit-environment-artifact-build"
+
+[[env.sit.queues.producers]]
+binding = "CHANNEL_FINAL_DELIVERY_QUEUE"
+queue = "mosoo-sit-channel-final-delivery"
+
+[[env.sit.queues.consumers]]
+queue = "mosoo-sit-api-command"
+max_batch_size = 10
+max_batch_timeout = 2
+max_retries = 5
+dead_letter_queue = "mosoo-sit-api-command-dlq"
+
+[[env.sit.queues.consumers]]
+queue = "mosoo-sit-api-command-dlq"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 1
+
+[[env.sit.queues.consumers]]
+queue = "mosoo-sit-environment-artifact-build"
+max_batch_size = 1
+max_batch_timeout = 1
+max_retries = 5
+max_concurrency = 5
+dead_letter_queue = "mosoo-sit-api-command-dlq"
+
+[[env.sit.queues.consumers]]
+queue = "mosoo-sit-channel-final-delivery"
+max_batch_size = 10
+max_batch_timeout = 5
+max_retries = 5
+dead_letter_queue = "mosoo-sit-channel-final-delivery-dlq"
+
+[[env.sit.migrations]]
 tag = "v1"
 new_sqlite_classes = ["DriverConnection", "Sandbox", "Session", "ChannelConnection"]
