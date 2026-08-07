@@ -155,6 +155,7 @@ SANDBOX_FILE_BUCKET_LOCAL = "false"
 MOSOO_APP_DEPLOYMENT_DOMAIN = "apps.unixyz.tech"
 MOSOO_DEPLOYMENT_MODE = "cloud"
 MOSOO_ENVIRONMENT = "production"
+MOSOO_RUNTIME_CONTROL_ORIGIN = "https://mosoo-api.unixyz.tech"
 POSTHOG_API_HOST = "https://us.i.posthog.com"
 
 [[env.prod.send_email]]
@@ -295,6 +296,7 @@ SANDBOX_FILE_BUCKET_LOCAL = "false"
 MOSOO_APP_DEPLOYMENT_DOMAIN = "apps-sit.unixyz.tech"
 MOSOO_DEPLOYMENT_MODE = "cloud"
 MOSOO_ENVIRONMENT = "sit"
+MOSOO_RUNTIME_CONTROL_ORIGIN = "https://mosoo-api-sit.unixyz.tech"
 POSTHOG_API_HOST = "https://us.i.posthog.com"
 
 [[env.sit.send_email]]
