@@ -338,7 +338,7 @@ class_name = "Sandbox"
 class_name = "Sandbox"
 image = "../driver/Containerfile"
 instance_type = "standard-2"
-max_instances = 2
+max_instances = 10
 
 [[env.sit.r2_buckets]]
 binding = "FILE_BUCKET"
