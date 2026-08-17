@@ -39,39 +39,31 @@ import type {
   RuntimeSubjectStatus,
 } from "./runtime-subject-store.types";
 
-// ponytail: every hosted account is on Free today; replace constants with
-// entitlements only when paid plans actually ship.
-export const FREE_PLAN_CONCURRENT_SANDBOX_LIMITS = {
-  account: 20,
-  agent: 3,
-  app: 10,
-} as const;
-
 interface RuntimeSubjectQuotaScope {
   readonly agentId: AgentId;
   readonly appId: AppId;
   readonly executionOwnerUserId: AccountId;
 }
 
-function runtimeSubjectQuotaCapacityPredicate(
-  input: RuntimeSubjectQuotaScope & { readonly now: number },
-): SQL {
-  const limits = FREE_PLAN_CONCURRENT_SANDBOX_LIMITS;
-
-  // ponytail: the production pool is capped at 50, so one guarded scan is cheaper
-  // than quota counters; add counters only if the pool ceiling grows materially.
+function runtimeSubjectAccountCapacityPredicate(input: {
+  readonly accountConcurrentSandboxLimit: number;
+  readonly executionOwnerUserId: AccountId;
+  readonly now: number;
+}): SQL {
+  // ponytail: use the existing status/claim indexes until measured contention
+  // justifies durable admission counters.
   return sql`(
-    SELECT
-      COALESCE(SUM(CASE WHEN quota_sandbox.agent_id = ${input.agentId} THEN 1 ELSE 0 END), 0) < ${limits.agent}
-      AND COALESCE(SUM(CASE WHEN quota_sandbox.app_id = ${input.appId} THEN 1 ELSE 0 END), 0) < ${limits.app}
-      AND COALESCE(SUM(CASE WHEN quota_sandbox.owner_account_id = ${input.executionOwnerUserId} THEN 1 ELSE 0 END), 0) < ${limits.account}
-    FROM ${sandboxesTable} AS quota_sandbox
-    WHERE quota_sandbox.status <> 'cold'
-      OR (
-        quota_sandbox.claim_owner IS NOT NULL
-        AND quota_sandbox.claim_expires_at > ${input.now}
+    SELECT COUNT(*)
+    FROM ${sandboxesTable} AS account_sandbox
+    WHERE account_sandbox.owner_account_id = ${input.executionOwnerUserId}
+      AND (
+        account_sandbox.status IN ('restoring', 'active', 'backing_up', 'destroying')
+        OR (
+          account_sandbox.claim_owner IS NOT NULL
+          AND account_sandbox.claim_expires_at > ${input.now}
+        )
       )
-  )`;
+  ) < ${input.accountConcurrentSandboxLimit}`;
 }
 
 function runtimeSubjectStatusPatch(input: {
@@ -276,6 +268,7 @@ export async function getRuntimeSubjectActivationRecord(
 export async function claimRuntimeSubjectActivation(
   database: D1Database,
   input: RuntimeSubjectQuotaScope & {
+    readonly accountConcurrentSandboxLimit: number;
     readonly claimExpiresAt: number;
     readonly claimOwner: string;
     readonly expectedStatus: RuntimeSubjectStatus;
@@ -304,7 +297,9 @@ export async function claimRuntimeSubjectActivation(
             isNull(sandboxesTable.claimExpiresAt),
             lte(sandboxesTable.claimExpiresAt, input.now),
           ),
-          ...(input.expectedStatus === "cold" ? [runtimeSubjectQuotaCapacityPredicate(input)] : []),
+          ...(input.expectedStatus === "cold"
+            ? [runtimeSubjectAccountCapacityPredicate(input)]
+            : []),
         ),
       )
       .returning({ id: sandboxesTable.id })

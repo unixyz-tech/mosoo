@@ -16,9 +16,12 @@ import type {
 import { createPlatformId } from "@mosoo/id";
 import { RUNTIME_DIAGNOSTIC_EVENT } from "@mosoo/runtime-events";
 
+import {
+  captureServerProductEvent,
+  SERVER_PRODUCT_ANALYTICS_EVENTS,
+} from "../../../../platform/analytics/product-analytics";
 import { createErrorLogContext, logWarn } from "../../../../platform/cloudflare/logger";
 import type { ApiBindings } from "../../../../platform/cloudflare/worker-types";
-import { validationError } from "../../../../platform/errors";
 import { currentTimestampMs } from "../../../../time";
 import {
   appendRuntimeDiagnosticEvent,
@@ -56,7 +59,6 @@ import {
 import {
   claimRuntimeSubjectActivation,
   ensureRuntimeSubjectId,
-  FREE_PLAN_CONCURRENT_SANDBOX_LIMITS,
   getRuntimeConversationSessionState,
   getRuntimeSubjectActivationRecord,
   markRuntimeSubjectActivationDestroying,
@@ -93,14 +95,6 @@ export interface ActivateRuntimeSubjectInput {
   readonly subjectId: PlatformId;
   readonly subjectKind: SandboxSubjectKind;
   readonly timing?: RuntimeTimingRecorder;
-}
-
-function freePlanSandboxLimitError() {
-  const limits = FREE_PLAN_CONCURRENT_SANDBOX_LIMITS;
-
-  return validationError(
-    `Free plan concurrent sandbox limit reached (${limits.agent} per Agent, ${limits.app} per App, ${limits.account} per account). Wait for a sandbox to stop before trying again.`,
-  );
 }
 
 export interface ActiveRuntimeSubject {
@@ -181,9 +175,21 @@ export function selectRuntimeSubjectRestoreBackup(input: {
 }
 
 export class RuntimeSubjectLifecycleService {
+  readonly #accountConcurrentSandboxLimit: number;
   readonly #bindings: ApiBindings;
 
   constructor(bindings: ApiBindings) {
+    const accountConcurrentSandboxLimit = Number(
+      bindings.MOSOO_ACCOUNT_CONCURRENT_SANDBOX_LIMIT ?? 5,
+    );
+    if (
+      !Number.isSafeInteger(accountConcurrentSandboxLimit) ||
+      accountConcurrentSandboxLimit <= 0
+    ) {
+      throw new Error("MOSOO_ACCOUNT_CONCURRENT_SANDBOX_LIMIT must be a positive integer.");
+    }
+
+    this.#accountConcurrentSandboxLimit = accountConcurrentSandboxLimit;
     this.#bindings = bindings;
   }
 
@@ -255,6 +261,27 @@ export class RuntimeSubjectLifecycleService {
 
       if (!activated) {
         throw new Error("Runtime subject activation claim expired before completion.");
+      }
+
+      if (isCold) {
+        await captureServerProductEvent(this.#bindings, {
+          distinctId: input.executionOwnerUserId,
+          event: SERVER_PRODUCT_ANALYTICS_EVENTS.sandboxCreated,
+          properties: {
+            activation_purpose: purpose,
+            agent_id:
+              input.diagnosticContext?.agentId ??
+              (input.subjectKind === "agent" ? input.subjectId : undefined),
+            execution_owner_id: input.executionOwnerUserId,
+            sandbox_id: input.runtimeSubjectId,
+            sandbox_kind: input.kind,
+            session_id:
+              input.diagnosticContext?.sessionId ??
+              (input.subjectKind === "session" ? input.subjectId : undefined),
+            subject_id: input.subjectId,
+            subject_kind: input.subjectKind,
+          },
+        });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Runtime subject activation failed.";
@@ -541,6 +568,7 @@ export class RuntimeSubjectLifecycleService {
     }
 
     const claimed = await claimRuntimeSubjectActivation(this.#bindings.DB, {
+      accountConcurrentSandboxLimit: this.#accountConcurrentSandboxLimit,
       agentId: input.activation.agentId,
       appId: input.activation.appId,
       claimExpiresAt: input.claimExpiresAt,
@@ -552,20 +580,6 @@ export class RuntimeSubjectLifecycleService {
     });
 
     if (!claimed) {
-      if (record.status === "cold") {
-        const refreshed = await getRuntimeSubjectActivationRecord(
-          this.#bindings.DB,
-          input.activation.runtimeSubjectId,
-        );
-
-        if (
-          refreshed?.status === "cold" &&
-          !hasActiveRuntimeSubjectClaim(refreshed, currentTimestampMs())
-        ) {
-          throw freePlanSandboxLimitError();
-        }
-      }
-
       throw new Error("Runtime subject is busy with lifecycle maintenance.");
     }
 

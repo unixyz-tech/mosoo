@@ -1,7 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
 import { createPlatformId } from "@mosoo/id";
-import type { AgentId, AppId, SandboxId, SessionId } from "@mosoo/id";
+import type { SandboxId, SessionId } from "@mosoo/id";
 
 import { decideRuntimeSubjectTransition } from "../src/modules/runtime/domain/runtime-subject-lifecycle.machine";
 import { createRuntimeSubjectLifecycleService } from "../src/modules/runtime/infrastructure/runtime-subject-lifecycle/runtime-subject-lifecycle.service";
@@ -10,12 +10,12 @@ import { destroyRuntimeSubjectContainer } from "../src/modules/runtime/infrastru
 import { recycleRuntimeSubject } from "../src/modules/runtime/infrastructure/runtime-subject-lifecycle/runtime-subject-recycle.service";
 import {
   advanceRuntimeSubjectOperationStatus,
-  FREE_PLAN_CONCURRENT_SANDBOX_LIMITS,
   markRuntimeSubjectCold,
   markRuntimeSubjectOperationStarted,
 } from "../src/modules/runtime/infrastructure/runtime-subject-lifecycle/runtime-subject-store";
 import { encodeSandboxBackupIdForStorage } from "../src/modules/runtime/infrastructure/sandbox-backup-id";
 import type { SandboxHandle } from "../src/modules/runtime/infrastructure/sandbox-handles";
+import { setServerProductAnalyticsTransportForTests } from "../src/platform/analytics/product-analytics";
 import type { ApiBindings } from "../src/platform/cloudflare/worker-types";
 import { SqliteD1Database } from "./helpers/sqlite-d1";
 
@@ -31,6 +31,10 @@ const RUNTIME_SUBJECT_QUOTA_SCOPE = {
   appId: APP_ID,
   executionOwnerUserId: ACCOUNT_ID,
 } as const;
+
+afterEach(() => {
+  setServerProductAnalyticsTransportForTests(null);
+});
 
 function createRuntimeSubjectLifecycleDatabase(): SqliteD1Database {
   const database = new SqliteD1Database();
@@ -238,6 +242,7 @@ function createSandboxHandle(
 function createBindings(
   database: D1Database,
   options: {
+    readonly accountConcurrentSandboxLimit?: string;
     readonly configureNetworkError?: Error;
     readonly destroyError?: Error;
     readonly destroyPromise?: Promise<void>;
@@ -249,6 +254,7 @@ function createBindings(
 ): ApiBindings {
   return {
     DB: database,
+    MOSOO_ACCOUNT_CONCURRENT_SANDBOX_LIMIT: options.accountConcurrentSandboxLimit ?? "5",
     SANDBOX_FILE_BUCKET_LOCAL: "true",
     runtimeSubjectHandleFactory: () => createSandboxHandle(options),
   } as unknown as ApiBindings;
@@ -309,43 +315,70 @@ describe("runtime subject lifecycle machine", () => {
     ).resolves.toBeNull();
   });
 
-  test("atomically caps Free sandboxes per Agent, App, and account", async () => {
-    for (const scope of ["agent", "app", "account"] as const) {
-      const database = createRuntimeSubjectLifecycleDatabase();
-      const inputs: ActivateRuntimeSubjectInput[] = [];
-      const limit = FREE_PLAN_CONCURRENT_SANDBOX_LIMITS[scope];
+  test("atomically applies the configured concurrent sandbox limit per account", async () => {
+    const database = createRuntimeSubjectLifecycleDatabase();
+    const inputs: ActivateRuntimeSubjectInput[] = Array.from({ length: 3 }, () => {
+      const sessionId = createPlatformId<SessionId>();
 
-      for (let index = 0; index <= limit; index += 1) {
-        const agentId = scope === "agent" ? AGENT_ID : createPlatformId<AgentId>();
-        const appId = scope === "account" ? createPlatformId<AppId>() : APP_ID;
-        const sessionId = createPlatformId<SessionId>();
+      return {
+        agentId: AGENT_ID,
+        appId: APP_ID,
+        executionOwnerUserId: ACCOUNT_ID,
+        kind: "cattle",
+        networkConstraints: { allowedHosts: [], networkPolicy: "full" },
+        runtimeSubjectId: createPlatformId<SandboxId>(),
+        subjectId: sessionId,
+        subjectKind: "session",
+      };
+    });
 
-        inputs.push({
-          agentId,
-          appId,
-          executionOwnerUserId: ACCOUNT_ID,
-          kind: "cattle",
-          networkConstraints: { allowedHosts: [], networkPolicy: "full" },
-          runtimeSubjectId: createPlatformId<SandboxId>(),
-          subjectId: sessionId,
-          subjectKind: "session",
-        });
-      }
+    const lifecycle = createRuntimeSubjectLifecycleService(
+      createBindings(database, { accountConcurrentSandboxLimit: "2" }),
+    );
+    const outcomes = await Promise.allSettled(inputs.map((input) => lifecycle.activate(input)));
+    const admittedIndex = outcomes.findIndex((outcome) => outcome.status === "fulfilled");
 
-      const lifecycle = createRuntimeSubjectLifecycleService(createBindings(database));
-      const outcomes = await Promise.allSettled(inputs.map((input) => lifecycle.activate(input)));
-      const rejected = outcomes.filter(
-        (outcome): outcome is PromiseRejectedResult => outcome.status === "rejected",
-      );
-      const active = await database
-        .prepare("SELECT COUNT(*) AS count FROM sandbox WHERE status = 'active'")
-        .first<{ count: number }>();
+    expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(2);
+    expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1);
+    expect(admittedIndex).toBeGreaterThanOrEqual(0);
+    await expect(
+      database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM sandbox WHERE owner_account_id = ? AND status = 'active'",
+        )
+        .bind(ACCOUNT_ID)
+        .first<{ count: number }>(),
+    ).resolves.toEqual({ count: 2 });
+    await expect(lifecycle.activate(inputs[admittedIndex])).resolves.toBeDefined();
 
-      expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(limit);
-      expect(rejected).toHaveLength(1);
-      expect(String(rejected[0]?.reason)).toContain("Free plan concurrent sandbox limit reached");
-      expect(active?.count).toBe(limit);
-    }
+    await expect(
+      lifecycle.activate({
+        ...inputs[0],
+        agentId: createPlatformId(),
+        appId: createPlatformId(),
+        runtimeSubjectId: createPlatformId<SandboxId>(),
+        subjectId: createPlatformId<SessionId>(),
+      }),
+    ).rejects.toThrow();
+
+    await expect(
+      lifecycle.activate({
+        ...inputs[0],
+        executionOwnerUserId: createPlatformId(),
+        runtimeSubjectId: createPlatformId<SandboxId>(),
+        subjectId: createPlatformId<SessionId>(),
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  test("rejects an invalid concurrent sandbox limit", () => {
+    expect(() =>
+      createRuntimeSubjectLifecycleService(
+        createBindings(createRuntimeSubjectLifecycleDatabase(), {
+          accountConcurrentSandboxLimit: "0",
+        }),
+      ),
+    ).toThrow("MOSOO_ACCOUNT_CONCURRENT_SANDBOX_LIMIT must be a positive integer.");
   });
 
   test("records operation transitions with monotonic status metadata", async () => {
@@ -444,6 +477,48 @@ describe("runtime subject lifecycle machine", () => {
       claim_expires_at: null,
       claim_owner: null,
       status: "active",
+    });
+  });
+
+  test("captures one sandbox creation when a cold subject becomes active", async () => {
+    const database = createRuntimeSubjectLifecycleDatabase();
+    await insertRuntimeSubject(database, { status: "cold" });
+    const capturedEvents: unknown[] = [];
+    setServerProductAnalyticsTransportForTests(async (_input, init) => {
+      capturedEvents.push(JSON.parse(init.body as string) as unknown);
+      return new Response(null, { status: 200 });
+    });
+    const bindings = {
+      ...createBindings(database),
+      POSTHOG_PROJECT_KEY: "phc_test",
+    } as ApiBindings;
+    const service = createRuntimeSubjectLifecycleService(bindings);
+    const activation = {
+      executionOwnerUserId: "01J00000000000000000000002",
+      kind: "cattle" as const,
+      networkConstraints: { allowedHosts: [], networkPolicy: "full" as const },
+      runtimeSubjectId: RUNTIME_SUBJECT_ID,
+      spaceAliases: [],
+      subjectId: "01J00000000000000000000009",
+      subjectKind: "session" as const,
+    };
+
+    await service.activate(activation);
+    await service.activate(activation);
+
+    expect(capturedEvents).toHaveLength(1);
+    expect(capturedEvents[0]).toMatchObject({
+      event: "sandbox_created",
+      properties: {
+        activation_purpose: "interactive",
+        distinct_id: activation.executionOwnerUserId,
+        execution_owner_id: activation.executionOwnerUserId,
+        sandbox_id: RUNTIME_SUBJECT_ID,
+        sandbox_kind: "cattle",
+        session_id: activation.subjectId,
+        subject_id: activation.subjectId,
+        subject_kind: "session",
+      },
     });
   });
 
