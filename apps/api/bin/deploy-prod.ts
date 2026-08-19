@@ -108,9 +108,9 @@ async function assertProdSchemaMatchesMigrations(expectedTables: readonly string
 }
 
 const REQUIRED_PROD_QUEUES: readonly string[] = [
-  "environment-artifact-build",
-  "channel-final-delivery",
-  "channel-final-delivery-dlq",
+  "mosoo-prod-environment-artifact-build",
+  "mosoo-prod-channel-final-delivery",
+  "mosoo-prod-channel-final-delivery-dlq",
 ];
 
 function listProdQueues(): string[] {

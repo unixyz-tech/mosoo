@@ -276,17 +276,14 @@ head_sampling_rate = 1
 enabled = true
 head_sampling_rate = 0.1
 
-[[env.prod.tail_consumers]]
-service = "mosoo-website-prod"
-
 [env.prod.vars]
 APP_NAME = "mosoo"
 WEB_ORIGIN = "https://mosoo-web.unixyz.tech"
 MOSOO_API_BASE_URL = "https://mosoo-api.unixyz.tech"
 AUTH_EMAIL_FROM = "mosoo AUTH <auth@mosoo.ai>"
-FILE_BUCKET_NAME = "mosoo-file"
-BACKUP_BUCKET_NAME = "mosoo-sandbox-state"
-SANDBOX_STATE_BUCKET_NAME = "mosoo-sandbox-state"
+FILE_BUCKET_NAME = "mosoo-file-prod"
+BACKUP_BUCKET_NAME = "mosoo-sandbox-state-prod"
+SANDBOX_STATE_BUCKET_NAME = "mosoo-sandbox-state-prod"
 SANDBOX_FILE_BUCKET_LOCAL = "false"
 MOSOO_APP_DEPLOYMENT_DOMAIN = "apps.unixyz.tech"
 MOSOO_ACCOUNT_CONCURRENT_SANDBOX_LIMIT = "5"
@@ -339,15 +336,15 @@ max_instances = 50
 
 [[env.prod.r2_buckets]]
 binding = "FILE_BUCKET"
-bucket_name = "mosoo-file"
+bucket_name = "mosoo-file-prod"
 
 [[env.prod.r2_buckets]]
 binding = "BACKUP_BUCKET"
-bucket_name = "mosoo-sandbox-state"
+bucket_name = "mosoo-sandbox-state-prod"
 
 [[env.prod.r2_buckets]]
 binding = "SANDBOX_STATE_BUCKET"
-bucket_name = "mosoo-sandbox-state"
+bucket_name = "mosoo-sandbox-state-prod"
 
 [[env.prod.d1_databases]]
 binding = "DB"
@@ -357,46 +354,46 @@ migrations_dir = "../../pkgs/db/drizzle"
 
 [[env.prod.queues.producers]]
 binding = "API_COMMAND_QUEUE"
-queue = "api-command"
+queue = "mosoo-prod-api-command"
 
 [[env.prod.queues.producers]]
 binding = "ENVIRONMENT_ARTIFACT_BUILD_QUEUE"
-queue = "environment-artifact-build"
+queue = "mosoo-prod-environment-artifact-build"
 
 [[env.prod.queues.producers]]
 binding = "CHANNEL_FINAL_DELIVERY_QUEUE"
-queue = "channel-final-delivery"
+queue = "mosoo-prod-channel-final-delivery"
 
 [[env.prod.queues.consumers]]
-queue = "api-command"
+queue = "mosoo-prod-api-command"
 max_batch_size = 10
 # Interactive runs dispatch inline (executionContext.waitUntil); this queue is
 # the durable fallback for executionContext-less paths (replay, DO-originated).
 # Drop the batch window 5s -> 2s so those paths don't eat a 5s dispatch delay.
 max_batch_timeout = 2
 max_retries = 5
-dead_letter_queue = "api-command-dlq"
+dead_letter_queue = "mosoo-prod-api-command-dlq"
 
 [[env.prod.queues.consumers]]
-queue = "api-command-dlq"
+queue = "mosoo-prod-api-command-dlq"
 max_batch_size = 10
 max_batch_timeout = 5
 max_retries = 1
 
 [[env.prod.queues.consumers]]
-queue = "environment-artifact-build"
+queue = "mosoo-prod-environment-artifact-build"
 max_batch_size = 1
 max_batch_timeout = 1
 max_retries = 5
 max_concurrency = 5
-dead_letter_queue = "api-command-dlq"
+dead_letter_queue = "mosoo-prod-api-command-dlq"
 
 [[env.prod.queues.consumers]]
-queue = "channel-final-delivery"
+queue = "mosoo-prod-channel-final-delivery"
 max_batch_size = 10
 max_batch_timeout = 5
 max_retries = 5
-dead_letter_queue = "channel-final-delivery-dlq"
+dead_letter_queue = "mosoo-prod-channel-final-delivery-dlq"
 
 [[migrations]]
 tag = "v1"

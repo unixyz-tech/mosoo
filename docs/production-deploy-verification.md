@@ -105,11 +105,11 @@ cd ../..
 
 Acceptance:
 
-- `api-command` exists.
-- `api-command-dlq` exists.
-- `environment-artifact-build` exists.
-- `channel-final-delivery` exists.
-- `channel-final-delivery-dlq` exists.
+- `mosoo-prod-api-command` exists.
+- `mosoo-prod-api-command-dlq` exists.
+- `mosoo-prod-environment-artifact-build` exists.
+- `mosoo-prod-channel-final-delivery` exists.
+- `mosoo-prod-channel-final-delivery-dlq` exists.
 
 ## Step 4 - Build The Driver
 
