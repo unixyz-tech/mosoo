@@ -262,6 +262,9 @@ new_sqlite_classes = ["DriverConnection", "Sandbox", "Session", "ChannelConnecti
 name = "mosoo-api-prod"
 workers_dev = false
 
+[env.prod.placement]
+region = "aws:us-west-2"
+
 # Named envs do not inherit the top-level [observability] block, so prod had no
 # queryable Workers Logs (only traces). Enable logs so structured log lines
 # (e.g. "closed before ready", driver/ready/socket events) are retrievable.
@@ -333,6 +336,9 @@ image = "../driver/Containerfile"
 # ponytail: early-stage spend fuse; raise only after sustained demand is measured.
 instance_type = "standard-2"
 max_instances = 50
+
+[env.prod.containers.constraints]
+regions = ["WNAM"]
 
 [[env.prod.r2_buckets]]
 binding = "FILE_BUCKET"
@@ -407,6 +413,9 @@ new_sqlite_classes = ["DriverConnection", "Sandbox", "Session", "ChannelConnecti
 name = "mosoo-api-sit"
 workers_dev = false
 
+[env.sit.placement]
+region = "aws:us-west-2"
+
 [env.sit.observability]
 enabled = true
 
@@ -474,6 +483,9 @@ class_name = "Sandbox"
 image = "../driver/Containerfile"
 instance_type = "standard-2"
 max_instances = 10
+
+[env.sit.containers.constraints]
+regions = ["WNAM"]
 
 [[env.sit.r2_buckets]]
 binding = "FILE_BUCKET"
