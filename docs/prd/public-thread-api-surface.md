@@ -57,3 +57,13 @@ Agent's API Access panel shows its identifier, token creation, and API reference
 - Thread files include explicit attachments and recorded Agent artifacts, not a
   complete runtime workspace. Thread history also does not guarantee that every
   later Run receives prior private runtime state or every earlier file.
+
+## Thread runtime prewarm
+
+A trusted backend may call `POST /api/v1/threads/{threadId}/prewarm` with its
+Access Token to request best-effort runtime prewarm for an existing Thread. The
+request has no body and returns `202 Accepted` with `thread_id`, status
+`accepted`, and `accepted_at`. Acceptance does not guarantee runtime readiness:
+the scheduler may skip an active Run, and prewarm failure does not affect later
+message delivery. The call is repeat-safe and does not create or modify the
+Thread, Runs, messages, or immutable `userId`.

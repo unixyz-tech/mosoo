@@ -17,6 +17,7 @@ import {
   TOKENS,
   createPublicHttpContractDatabase,
   createPublicHttpTestBindings,
+  createTestExecutionContext,
 } from "./helpers/public-api-http-test-fixture";
 import {
   OWNER_VIEWER,
@@ -2330,6 +2331,114 @@ describe("Public Thread API e2e", () => {
       expect(expectRecord(await readJson(conflict))["error"]).toMatchObject({
         code: "idempotency_conflict",
       });
+    });
+  });
+});
+
+describe("Public Thread prewarm API", () => {
+  test("accepts repeated prewarm without changing Thread business data", async () => {
+    const database = await createPublicHttpContractDatabase();
+    const app = createPublicThreadApiTestApp();
+    const threadId = generatedPublicThreadId(130);
+    await insertPublicThread(database, {
+      id: threadId,
+      title: "Prewarmable public Thread",
+      updatedAt: 3_000,
+    });
+    const bindings = createPublicHttpTestBindings(database) as ApiBindings;
+    const backgroundTasks: Promise<unknown>[] = [];
+    const readThreadBusinessState = () =>
+      database
+        .prepare(
+          `SELECT end_user_id, last_run_id, metadata_json, updated_at
+             FROM session
+            WHERE id = ?`,
+        )
+        .bind(threadId)
+        .first();
+    const before = await readThreadBusinessState();
+    const requestPrewarm = () =>
+      app.request(
+        new Request(`https://api.example.com/api/v1/threads/${threadId}/prewarm`, {
+          headers: { Authorization: bearer(TOKENS.owner) },
+          method: "POST",
+        }),
+        undefined,
+        bindings,
+        {
+          ...createTestExecutionContext(),
+          waitUntil: (task: Promise<unknown>) => {
+            backgroundTasks.push(task);
+          },
+        },
+      );
+
+    for (let index = 0; index < 2; index += 1) {
+      const response = await requestPrewarm();
+      expect(response.status).toBe(202);
+      const body = await readJson(response);
+      expect(body).toMatchObject({
+        status: "accepted",
+        thread_id: threadId,
+      });
+      expect(new Date(expectString(body["accepted_at"])).toISOString()).toBe(body["accepted_at"]);
+    }
+
+    expect(backgroundTasks).toHaveLength(2);
+    await expect(readThreadBusinessState()).resolves.toEqual(before);
+    await expect(countPublicThreadsForAgent(database)).resolves.toBe(1);
+    await expect(countSessionRows(database, "session_run", threadId)).resolves.toBe(0);
+    await expect(countSessionRows(database, "session_message", threadId)).resolves.toBe(0);
+  });
+
+  test("reuses Public Thread ownership, App, and Agent exposure admission", async () => {
+    const database = await createPublicHttpContractDatabase();
+    const app = createPublicThreadApiTestApp();
+    const threadId = generatedPublicThreadId(131);
+    await insertPublicThread(database, {
+      id: threadId,
+      title: "Admission-protected public Thread",
+      updatedAt: 3_001,
+    });
+    const requestPrewarm = (token?: string) =>
+      requestPublicApi(
+        app,
+        database,
+        new Request(`https://api.example.com/api/v1/threads/${threadId}/prewarm`, {
+          headers: token ? { Authorization: bearer(token) } : undefined,
+          method: "POST",
+        }),
+      );
+
+    const unauthenticated = await requestPrewarm();
+    expect(unauthenticated.status).toBe(401);
+
+    const nonOwner = await requestPrewarm(TOKENS.nonOwner);
+    expect(nonOwner.status).toBe(404);
+    expect(expectRecord(await readJson(nonOwner))["error"]).toMatchObject({
+      code: "not_found",
+      message: "Thread not found.",
+    });
+
+    await database
+      .prepare("UPDATE session SET app_id = ? WHERE id = ?")
+      .bind("01J0000000000000000000BAD1", threadId)
+      .run();
+    const mismatchedApp = await requestPrewarm(TOKENS.owner);
+    expect(mismatchedApp.status).toBe(404);
+
+    await database
+      .prepare("UPDATE session SET app_id = ? WHERE id = ?")
+      .bind(PUBLIC_API_TEST_IDS.app, threadId)
+      .run();
+    await database
+      .prepare("UPDATE agent SET status = 'draft', live_deployment_version_id = NULL WHERE id = ?")
+      .bind(PUBLIC_API_TEST_IDS.agent)
+      .run();
+    const unexposedAgent = await requestPrewarm(TOKENS.owner);
+    expect(unexposedAgent.status).toBe(409);
+    expect(expectRecord(await readJson(unexposedAgent))["error"]).toMatchObject({
+      code: "agent_not_published",
     });
   });
 });

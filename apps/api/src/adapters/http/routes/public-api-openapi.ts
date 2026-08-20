@@ -490,6 +490,19 @@ export function createPublicApiOpenApiDocument(origin: string): PublicApiOpenApi
         summary: "Archive a Thread",
       }),
     },
+    "/threads/{threadId}/prewarm": {
+      post: operation({
+        description:
+          "Accepts a best-effort, fire-and-forget runtime prewarm for an existing Thread. This does not create or modify the Thread, Run, messages, or userId; repeated requests are safe, and an active Run may cause the runtime scheduler to skip the work.",
+        parameters: [threadIdParameter],
+        success: {
+          "202": jsonResponse("Prewarm accepted.", {
+            $ref: "#/components/schemas/PrewarmThreadResponse",
+          }),
+        },
+        summary: "Prewarm a Thread runtime",
+      }),
+    },
     "/threads/{threadId}/events": {
       get: operation({
         description:

@@ -194,6 +194,23 @@ export function registerPublicApiRoute(app: Hono<ApiGatewayEnvironment>) {
     }),
   );
 
+  v1.post("/threads/:threadId/prewarm", async (c) =>
+    runPublicApiThreadReadJson(c, {
+      operation: async ({ caller, threadId }) => {
+        const { prewarmPublicThread } = await loadPublicThreadService();
+        return prewarmPublicThread({
+          bindings: c.env,
+          caller,
+          executionContext: c.executionCtx,
+          requestUrl: c.req.url,
+          threadId,
+        });
+      },
+      status: 202,
+      threadId: () => parseThreadIdParam(c.req.param("threadId")),
+    }),
+  );
+
   v1.get("/threads/:threadId/events", async (c) =>
     runPublicApiThreadReadJson(c, {
       operation: async ({ caller, threadId }) => {

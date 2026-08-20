@@ -168,6 +168,12 @@ export interface PublicThreadApiRetrieveThreadResponse {
   thread: PublicThreadSummary;
 }
 
+export interface PublicThreadApiPrewarmThreadResponse {
+  accepted_at: string;
+  status: "accepted";
+  thread_id: PublicThreadId;
+}
+
 export interface PublicThreadApiListThreadsResponse {
   threads: PublicThreadSummary[];
 }

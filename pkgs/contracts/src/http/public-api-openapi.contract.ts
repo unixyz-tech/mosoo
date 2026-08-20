@@ -423,6 +423,27 @@ export const PUBLIC_API_OPENAPI_SCHEMAS = {
     required: ["links", "run", "thread"],
     type: "object",
   },
+  PrewarmThreadResponse: {
+    additionalProperties: false,
+    description: "Acknowledgement that best-effort Thread runtime prewarm was accepted.",
+    properties: {
+      accepted_at: {
+        description: "Timestamp (RFC 3339) at which the prewarm request was accepted.",
+        format: "date-time",
+        type: "string",
+      },
+      status: {
+        const: "accepted",
+        description: "Acceptance status. Runtime readiness is not implied.",
+      },
+      thread_id: {
+        ...PLATFORM_ID_SCHEMA,
+        description: "ID of the existing Thread scheduled for best-effort prewarm.",
+      },
+    },
+    required: ["accepted_at", "status", "thread_id"],
+    type: "object",
+  },
   RetrieveThreadResponse: {
     additionalProperties: false,
     description: "Current state of a Thread.",

@@ -1024,3 +1024,25 @@ describe("API to web boundary", () => {
     ]);
   });
 });
+
+describe("Public Thread prewarm contract", () => {
+  test("documents the bodyless asynchronous prewarm interface", () => {
+    const document = createPublicApiOpenApiDocument("https://api.example.com");
+    const operation = document.paths["/threads/{threadId}/prewarm"]?.post;
+
+    expect(operation?.requestBody).toBeUndefined();
+    expect(operation?.parameters?.map((parameter) => parameter.name)).toEqual(["threadId"]);
+    expect(operation?.responses["202"]).toMatchObject({
+      content: {
+        "application/json": {
+          schema: { $ref: "#/components/schemas/PrewarmThreadResponse" },
+        },
+      },
+    });
+    expectProperties(openApiSchemaProperties("PrewarmThreadResponse"), [
+      "accepted_at",
+      "status",
+      "thread_id",
+    ]);
+  });
+});
